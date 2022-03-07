@@ -1,7 +1,7 @@
 import vertexShaderSource from "./effect.vert";
 import fragmentShaderSource from "./effect.frag";
 import { createShader, createProgram } from "../shader";
-import noiseUrl from "./noise18_512x512.png"
+import noiseTextureUrl from "./noise18_512x512.png"
 
 function loadImage(url: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -20,8 +20,7 @@ export class Effector {
   #width = 360
   #height = 240
   #texture: HTMLImageElement | null = null
-  #textureCanvas1: HTMLCanvasElement
-  #textureCanvas2: HTMLCanvasElement
+  #textureCanvas: HTMLCanvasElement
 
   constructor() {
     this.#canvas = document.createElement('canvas')
@@ -29,12 +28,11 @@ export class Effector {
     this.#vertShader = createShader(gl, gl.VERTEX_SHADER, vertexShaderSource)
     this.#fragShader = createShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource)
     this.#program = createProgram(gl, this.#vertShader, this.#fragShader);
-    this.#textureCanvas1 = document.createElement('canvas')
-    this.#textureCanvas2 = document.createElement('canvas')
+    this.#textureCanvas = document.createElement('canvas')
   }
 
   async prepare() {
-    this.#texture = await loadImage(noiseUrl)
+    this.#texture = await loadImage(noiseTextureUrl)
   }
 
   private getWebGLContext() {
@@ -56,43 +54,27 @@ export class Effector {
     this.#canvas.height = height
   }
 
-  process(video: HTMLCanvasElement, mask: HTMLCanvasElement, detected: boolean) {
-    (() => {
-      if (!this.#texture) {
-        throw new Error("no texture")
-      }
-      const ctx = this.#textureCanvas1.getContext("2d")!
-      ctx.clearRect(0, 0, this.#textureCanvas1.width, this.#textureCanvas1.height)
-      ctx.filter = "blur(1px)"
-      const n = Math.sin(performance.now() / 1000 * 10);
-      const p = ((n + 1) % 2) / 2;
-      ctx.translate(0, - p * this.#textureCanvas1.height)
-      ctx.drawImage(this.#texture,
-        0, 0, this.#texture.width, this.#texture.height,
-        0, 0, this.#textureCanvas1.width, this.#textureCanvas1.height)
-      ctx.drawImage(this.#texture,
-        0, 0, this.#texture.width, this.#texture.height,
-        0, this.#textureCanvas1.height, this.#textureCanvas1.width, this.#textureCanvas1.height)
-      ctx.resetTransform()
-    })();
-    (() => {
-      if (!this.#texture) {
-        throw new Error("no texture")
-      }
-      const ctx = this.#textureCanvas2.getContext("2d")!
-      ctx.clearRect(0, 0, this.#textureCanvas2.width, this.#textureCanvas2.height)
-      ctx.filter = "blur(2px)"
-      const n = Math.cos(performance.now() / 1000 * 10);
-      const p = ((n + 1) % 2) / 2;
-      ctx.translate(0, - p * this.#textureCanvas2.height)
-      ctx.drawImage(this.#texture,
-        0, 0, this.#texture.width, this.#texture.height,
-        0, 0, this.#textureCanvas2.width, this.#textureCanvas2.height)
-      ctx.drawImage(this.#texture,
-        0, 0, this.#texture.width, this.#texture.height,
-        0, this.#textureCanvas2.height, this.#textureCanvas2.width, this.#textureCanvas2.height)
-      ctx.resetTransform()
-    })();
+  updateTexture() {
+    if (!this.#texture) {
+      throw new Error("no texture")
+    }
+    const ctx = this.#textureCanvas.getContext("2d")!
+    ctx.clearRect(0, 0, this.#textureCanvas.width, this.#textureCanvas.height)
+    ctx.filter = "blur(1px)"
+    const n = Math.sin(performance.now() / 1000 * 10);
+    const p = ((n + 1) % 2) / 2;
+    ctx.translate(0, - p * this.#textureCanvas.height)
+    ctx.drawImage(this.#texture,
+      0, 0, this.#texture.width, this.#texture.height,
+      0, 0, this.#textureCanvas.width, this.#textureCanvas.height)
+    ctx.drawImage(this.#texture,
+      0, 0, this.#texture.width, this.#texture.height,
+      0, this.#textureCanvas.height, this.#textureCanvas.width, this.#textureCanvas.height)
+    ctx.resetTransform()
+  }
+
+  process(mask: HTMLCanvasElement) {
+    this.updateTexture()
 
     const gl = this.getWebGLContext()
     // look up where the vertex data needs to go.
@@ -117,33 +99,19 @@ export class Effector {
       1.0,  1.0,
     ]), gl.STATIC_DRAW);
 
-    const targetTexture = this.createTexture(video)
     const maskTexture = this.createTexture(mask)
-    const noiseTexture1 = this.createTexture(this.#textureCanvas1)
-    const noiseTexture2 = this.createTexture(this.#textureCanvas2)
-    const u_image0Location = gl.getUniformLocation(this.#program, "u_imageTarget");
+    const noiseTexture1 = this.createTexture(this.#textureCanvas)
     const u_image1Location = gl.getUniformLocation(this.#program, "u_imageMask");
     const u_image2Location = gl.getUniformLocation(this.#program, "u_noiseMask1");
-    const u_image3Location = gl.getUniformLocation(this.#program, "u_noiseMask2");
-
-    const u_detectedLocation = gl.getUniformLocation(this.#program, "u_detected");
 
     // set which texture units to render with.
-    gl.uniform1i(u_image0Location, 0);  // texture unit 0
     gl.uniform1i(u_image1Location, 1);  // texture unit 1
     gl.uniform1i(u_image2Location, 2);  // texture unit 2
-    gl.uniform1i(u_image3Location, 3);  // texture unit 3
 
-    gl.uniform1f(u_detectedLocation, detected ? 1.0 : 0.0);
-
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, targetTexture);
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, maskTexture);
     gl.activeTexture(gl.TEXTURE2);
     gl.bindTexture(gl.TEXTURE_2D, noiseTexture1);
-    gl.activeTexture(gl.TEXTURE3);
-    gl.bindTexture(gl.TEXTURE_2D, noiseTexture2);
 
     // lookup uniforms
     var resolutionLocation = gl.getUniformLocation(this.#program, "u_resolution");
@@ -196,10 +164,8 @@ export class Effector {
     var offset = 0;
     var count = 6;
     gl.drawArrays(primitiveType, offset, count);
-    gl.deleteTexture(targetTexture)
     gl.deleteTexture(maskTexture)
     gl.deleteTexture(noiseTexture1)
-    gl.deleteTexture(noiseTexture2)
   }
 
   createTexture(image: HTMLCanvasElement | ImageBitmap) {

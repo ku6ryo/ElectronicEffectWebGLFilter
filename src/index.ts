@@ -35,8 +35,6 @@ async function main() {
     cameraCanvas.height = vh
     maskCanvas.width = vw
     maskCanvas.height = vh
-    prevMaskCanvas.width = vw
-    prevMaskCanvas.height = vh
     effector.setSize(vw, vh)
     requestAnimationFrame(process)
   })
@@ -46,10 +44,6 @@ async function main() {
   const maskCanvas = document.createElement("canvas")
   const maskContext = maskCanvas.getContext("2d")!
   document.body.appendChild(maskCanvas)
-
-  const prevMaskCanvas = document.createElement("canvas")
-  const prevMaskContext = prevMaskCanvas.getContext("2d")!
-  document.body.appendChild(prevMaskCanvas)
 
   if (navigator.mediaDevices.getUserMedia) {
     navigator.mediaDevices.getUserMedia({
@@ -76,7 +70,6 @@ async function main() {
     alert("getUserMedia not supported on your browser!");
   }
 
-  let point: { x: number, y: number } | null = null
   let frames = 0
   async function process () {
     stats.begin()
@@ -85,44 +78,10 @@ async function main() {
 
     maskContext.clearRect(0, 0, maskCanvas.width, maskCanvas.height)
     maskContext.globalAlpha = 0.90
-    // maskContext.drawImage(prevMaskCanvas, 0, 0, maskCanvas.width, maskCanvas.height)
     maskContext.globalAlpha = 0.6
 
     let detected = false
     const hands = await detector.estimateHands(cameraCanvas)
-    /*
-    if (hands.length > 0) {
-      const hand = hands[0]
-      const keypoints = hand.keypoints
-      const indexFinger = keypoints[8]
-      const { x, y } = indexFinger
-      if (point) {
-        const dx = Math.abs(x - point?.x)
-        const dy = Math.abs(x - point?.x)
-        const d = Math.sqrt(dx * dx + dy * dy)
-        if (d > 10) {
-          maskContext.filter = 'blur(1px)';
-          maskContext.strokeStyle = 'blue';
-          maskContext.lineWidth = 12;
-          maskContext.beginPath();
-          maskContext.moveTo(point.x, point.y);
-          maskContext.lineTo(x, y);
-          maskContext.closePath()
-          maskContext.stroke()
-          console.log(point)
-          point = { x, y }
-          detected = true
-        } else {
-          detected = false
-        }
-      } else {
-        point = { x, y }
-      }
-    } else {
-      detected = false
-    }
-
-    */
     if (hands.length > 1) {
       const hand1 = hands[0]
       const indexFinger1 = hand1.keypoints[8]
@@ -141,12 +100,27 @@ async function main() {
       detected = true
     }
 
-    prevMaskContext.clearRect(0, 0, maskCanvas.width, maskCanvas.height)
-    prevMaskContext.globalAlpha = 1
-    prevMaskContext.drawImage(maskCanvas, 0, 0, prevMaskCanvas.width, prevMaskCanvas.height)
+    effector.process(maskCanvas)
 
-    effector.process(cameraCanvas, maskCanvas, detected && (frames % 4 === 0))
+    mainContext.clearRect(0, 0, mainCanvas.width, mainCanvas.height)
+    if (detected && Math.random() < 0.2) {
+      mainContext.filter = "grayscale(100%) brightness(200%)"
+      mainContext.drawImage(cameraCanvas, 0, 0, mainCanvas.width, mainCanvas.height)
+    } else {
+      mainContext.filter = "grayscale(100%)"
+      mainContext.drawImage(cameraCanvas, 0, 0, mainCanvas.width, mainCanvas.height)
+    }
+
+    mainContext.filter = "blur(20px)"
+    mainContext.globalAlpha = 1
     mainContext.drawImage(effector.getCanvas(), 0, 0, mainCanvas.width, mainCanvas.height)
+
+    mainContext.filter = "blur(2px)"
+    mainContext.globalAlpha = 0.8
+    mainContext.drawImage(effector.getCanvas(), 0, 0, mainCanvas.width, mainCanvas.height)
+    // Reset settings
+    mainContext.filter = "none"
+    mainContext.globalAlpha = 1.0
 
     frames += 1
 
