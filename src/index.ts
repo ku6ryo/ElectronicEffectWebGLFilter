@@ -70,14 +70,12 @@ async function main() {
     alert("getUserMedia not supported on your browser!");
   }
 
-  let frames = 0
   async function process () {
     stats.begin()
     cameraContext.clearRect(0, 0, cameraCanvas.width, cameraCanvas.height)
     cameraContext.drawImage(cameraVideo, 0, 0, cameraCanvas.width, cameraCanvas.height)
 
     maskContext.clearRect(0, 0, maskCanvas.width, maskCanvas.height)
-    maskContext.globalAlpha = 0.90
     maskContext.globalAlpha = 0.6
 
     let detected = false
@@ -121,8 +119,6 @@ async function main() {
     // Reset settings
     mainContext.filter = "none"
     mainContext.globalAlpha = 1.0
-
-    frames += 1
 
     stats.end()
     requestAnimationFrame(process)
